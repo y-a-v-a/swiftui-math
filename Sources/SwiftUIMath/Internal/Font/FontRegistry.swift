@@ -87,7 +87,7 @@ extension Math {
 extension CGFont {
   fileprivate static func named(_ name: Math.Font.Name) -> CGFont? {
     guard
-      let bundleURL = Bundle.module.url(forResource: "mathFonts", withExtension: "bundle"),
+      let bundleURL = Bundle.swiftUIMath?.url(forResource: "mathFonts", withExtension: "bundle"),
       let url = Bundle(url: bundleURL)?.url(forResource: name.rawValue, withExtension: "otf"),
       let data = try? Data(contentsOf: url),
       let dataProvider = CGDataProvider(data: data as CFData)
@@ -102,7 +102,7 @@ extension CGFont {
 extension Math.FontTable {
   fileprivate static func named(_ name: Math.Font.Name) -> Math.FontTable? {
     guard
-      let bundleURL = Bundle.module.url(forResource: "mathFonts", withExtension: "bundle"),
+      let bundleURL = Bundle.swiftUIMath?.url(forResource: "mathFonts", withExtension: "bundle"),
       let url = Bundle(url: bundleURL)?.url(forResource: name.rawValue, withExtension: "plist"),
       let data = try? Data(contentsOf: url)
     else {
