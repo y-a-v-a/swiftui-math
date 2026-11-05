@@ -52,10 +52,11 @@ extension Math {
           }
 
           guard
+            let platformFont = PlatformFont(font: font),
             let atomList = atomList(for: latex, cache: &cache),
             let displayNode = Typesetter.createLineForMathList(
               atomList,
-              font: .init(font: font),
+              font: platformFont,
               style: .init(style),
               maxWidth: maxWidth
             )
