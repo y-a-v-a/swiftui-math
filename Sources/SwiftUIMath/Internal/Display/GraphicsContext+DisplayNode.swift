@@ -18,11 +18,11 @@ extension GraphicsContext {
   func draw(_ displayNode: Math.DisplayNode, size: CGSize, with shading: GraphicsContext.Shading) {
     var context = self
 
-    context.fill(Path(CGRect(origin: .zero, size: size)), with: shading)
-    context.blendMode = .destinationIn
-
-    context.drawLayer {
+    // Clip rather than fill and blend with `.destinationIn`: PDF output only applies that blend
+    // where the layer has ink, so the rest of the fill would stay as a solid block.
+    context.clipToLayer {
       $0.draw(displayNode, size: size, foregroundColor: .black)
     }
+    context.fill(Path(CGRect(origin: .zero, size: size)), with: shading)
   }
 }
