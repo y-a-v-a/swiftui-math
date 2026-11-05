@@ -16,6 +16,9 @@ extension Math {
 
     static let shared = DisplayProvider()
 
+    /// How far the canvas width can differ from the measured width: one point at 1x.
+    private static let pixelRoundingTolerance: CGFloat = 1
+
     private let cache = ReadWriteLockIsolated<Cache>(Cache())
 
     func sizeThatFits(
@@ -39,48 +42,60 @@ extension Math {
       proposedWidth: CGFloat
     ) -> DisplayNode? {
       cache.withValue { cache in
-        let roundedWidth = proposedWidth.halfPointRounded()
-        let key = KeyBox(
-          Cache.Key(
-            latex: latex,
-            font: font,
-            style: style,
-            proposedWidth: roundedWidth
-          )
-        )
+        func key(_ width: CGFloat) -> KeyBox<Cache.Key> {
+          KeyBox(Cache.Key(latex: latex, font: font, style: style, proposedWidth: width))
+        }
 
-        if let displayNode = cache.displayNode.object(forKey: key) {
+        func typeset(maxWidth: CGFloat, cache: inout Cache) -> DisplayNode? {
+          if let displayNode = cache.displayNode.object(forKey: key(maxWidth)) {
+            return displayNode
+          }
+
+          guard
+            let atomList = atomList(for: latex, cache: &cache),
+            let displayNode = Typesetter.createLineForMathList(
+              atomList,
+              font: .init(font: font),
+              style: .init(style),
+              maxWidth: maxWidth
+            )
+          else {
+            return nil
+          }
+
+          cache.displayNode.setObject(displayNode, forKey: key(maxWidth))
           return displayNode
         }
 
-        guard
-          let atomList = atomList(for: latex, cache: &cache),
-          let displayNode = Typesetter.createLineForMathList(
-            atomList,
-            font: .init(font: font),
-            style: .init(style),
-            maxWidth: roundedWidth
-          )
+        // The draw pass proposes the canvas width, which is the measured width after pixel
+        // rounding. An expression that fits must not wrap because of that rounding: the wrapped
+        // layout is taller than the frame measured for it, so part of it would be clipped.
+        guard let natural = typeset(maxWidth: 0, cache: &cache) else {
+          return nil
+        }
+        if proposedWidth <= 0 || natural.width <= proposedWidth + Self.pixelRoundingTolerance {
+          return natural
+        }
+
+        guard let wrapped = typeset(maxWidth: proposedWidth.halfPointRounded(), cache: &cache)
         else {
           return nil
         }
 
-        cache.displayNode.setObject(displayNode, forKey: key)
-
-        if displayNode.width != roundedWidth {
-          // Cache the measured width to avoid a miss between layout and draw passes
-          let secondaryKey = KeyBox(
-            Cache.Key(
-              latex: latex,
-              font: font,
-              style: style,
-              proposedWidth: displayNode.width.halfPointRounded()
-            )
-          )
-          cache.displayNode.setObject(displayNode, forKey: secondaryKey)
+        // Same reason for a wrapped layout: the widths around the one it measured must find it
+        // again rather than wrap a second time, at a width narrower than its own lines.
+        for offset in stride(
+          from: -Self.pixelRoundingTolerance,
+          through: Self.pixelRoundingTolerance,
+          by: 0.5
+        ) {
+          let width = (wrapped.width + offset).halfPointRounded()
+          if width > 0 {
+            cache.displayNode.setObject(wrapped, forKey: key(width))
+          }
         }
 
-        return displayNode
+        return wrapped
       }
     }
 

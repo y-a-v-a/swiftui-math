@@ -714,8 +714,10 @@ extension Math {
       // Reset optimization flag - after breaking, we need to check again
       remainingContentFits = false
 
-      // Flush the current line
-      self.addDisplayLine()
+      // Flush the current line. It can be empty when scripts were the last thing added to it.
+      if currentLine.length > 0 {
+        self.addDisplayLine()
+      }
 
       // Calculate dynamic line height based on actual content
       let lineHeight = calculateCurrentLineHeight()
@@ -870,34 +872,36 @@ extension Math {
       return max(lineHeight, styleFont.font.size * 1.2)
     }
 
-    // Estimate the width of an atom including its scripts (without actually creating the displays)
-    // This is used for width-checking decisions for atoms with super/subscripts
-    func estimateAtomWidthWithScripts(_ atom: Atom) -> CGFloat {
-      // Estimate base atom width
-      var atomWidth = CGFloat(atom.nucleus.count) * styleFont.font.size * 0.5  // rough estimate
-
-      // If atom has scripts, estimate their contribution
-      if atom.superscript != nil || atom.`subscript` != nil {
-        let scriptFontSize = Self.getStyleSize(self.scriptStyle(), font: font)
-
-        var scriptWidth: CGFloat = 0
-        if let superscript = atom.superscript {
-          // Estimate superscript width
-          let superScriptAtomCount = superscript.atoms.count
-          scriptWidth = max(scriptWidth, CGFloat(superScriptAtomCount) * scriptFontSize * 0.5)
-        }
-
-        if let `subscript` = atom.`subscript` {
-          // Estimate subscript width
-          let subScriptAtomCount = `subscript`.atoms.count
-          scriptWidth = max(scriptWidth, CGFloat(subScriptAtomCount) * scriptFontSize * 0.5)
-        }
-
-        // Add script width plus space after script
-        atomWidth += scriptWidth + styleFont.metrics.spaceAfterScript
+    // The width an atom's scripts add after its nucleus, matching where `makeScripts` puts them.
+    // Measured rather than estimated: an estimate above the real width would break a line that
+    // fits. The space after the scripts isn't included, as it doesn't count towards line width.
+    func scriptsWidth(of atom: Atom) -> CGFloat {
+      var delta = CGFloat(0)
+      if !atom.nucleus.isEmpty {
+        let index = atom.nucleus.index(before: atom.nucleus.endIndex)
+        let glyph = self.findGlyphForCharacterAtIndex(index, inString: atom.nucleus)
+        delta = styleFont.metrics.italicCorrection(forGlyph: glyph)
       }
 
-      return atomWidth
+      let superscriptWidth = atom.superscript.flatMap {
+        Typesetter.createLineForMathList(
+          $0, font: font, style: self.scriptStyle(), cramped: self.superScriptCramped())?.width
+      }
+      let subscriptWidth = atom.`subscript`.flatMap {
+        Typesetter.createLineForMathList(
+          $0, font: font, style: self.scriptStyle(), cramped: self.subscriptCramped())?.width
+      }
+
+      switch (superscriptWidth, subscriptWidth) {
+      case let (superscriptWidth?, subscriptWidth?):
+        return max(superscriptWidth + delta, subscriptWidth)
+      case let (superscriptWidth?, nil):
+        return max(delta, 0) + superscriptWidth
+      case let (nil, subscriptWidth?):
+        return subscriptWidth
+      case (nil, nil):
+        return 0
+      }
     }
 
     // Calculate break penalty score for breaking after a given atom type
@@ -1369,6 +1373,16 @@ extension Math {
           // Pass nextAtoms for look-ahead to find better break points
           checkAndPerformInteratomLineBreak(atom, prevNode: prevNode, nextAtoms: nextAtoms)
 
+          // A scripted atom breaks as a unit, before its nucleus joins the line: a break after
+          // that point would leave the scripts on the next line, away from their nucleus.
+          if maxWidth > 0 && (atom.`subscript` != nil || atom.superscript != nil) {
+            let lineWidth = currentPosition.x + getCurrentLineWidth()
+            let atomWidth = calculateAtomWidth(atom, prevNode: prevNode) + scriptsWidth(of: atom)
+            if lineWidth > 0 && lineWidth + atomWidth > maxWidth {
+              performInteratomLineBreak()
+            }
+          }
+
           if prevNode != nil {
             let interElementSpace = self.getInterElementSpace(prevNode!.type, right: atom.type)
             if currentLine.length > 0 {
@@ -1506,27 +1520,6 @@ extension Math {
                 }
               }
               // If no break point found, let it overflow (better than breaking mid-word)
-            }
-          }
-
-          // Check if atom with scripts would exceed width constraint (improved script handling)
-          if maxWidth > 0 && (atom.`subscript` != nil || atom.superscript != nil)
-            && currentLine.length > 0
-          {
-            // Estimate width including scripts
-            let atomWidthWithScripts = estimateAtomWidthWithScripts(atom)
-            let interElementSpace = self.getInterElementSpace(
-              prevNode?.type ?? .ordinary, right: atom.type)
-            let currentWidth = getCurrentLineWidth()
-            let projectedWidth = currentWidth + interElementSpace + atomWidthWithScripts
-
-            // If adding this scripted atom would exceed width, break line first
-            if projectedWidth > maxWidth {
-              self.addDisplayLine()
-              let lineHeight = calculateCurrentLineHeight()
-              currentPosition.y -= lineHeight
-              currentPosition.x = 0
-              currentLineStartIndex = displayAtoms.count
             }
           }
 

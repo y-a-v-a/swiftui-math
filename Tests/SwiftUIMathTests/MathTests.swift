@@ -9,6 +9,10 @@
   struct MathTests {
     private let layout = SwiftUISnapshotLayout.device(config: .iPhone8)
 
+    // Anti-aliased edges vary by up to 2 levels out of 255 between machines and drawing paths,
+    // which this metric scores as low as 0.92. A shift of one point still fails every snapshot.
+    private let perceptualPrecision: Float = 0.9
+
     @Test
     func displayAndInlineStyles() {
       let view = VStack(alignment: .leading, spacing: 16) {
@@ -23,7 +27,7 @@
       .background(Color.guide)
       .padding(.horizontal)
 
-      assertSnapshot(of: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout))
     }
 
     @Test
@@ -41,7 +45,7 @@
       .background(Color.guide)
       .padding(.horizontal)
 
-      assertSnapshot(of: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout))
     }
 
     @Test
@@ -58,7 +62,7 @@
       .background(Color.guide)
       .padding(.horizontal)
 
-      assertSnapshot(of: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout))
     }
 
     @Test
@@ -71,7 +75,7 @@
       .background(Color.guide)
       .padding(.horizontal)
 
-      assertSnapshot(of: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout))
     }
 
     @Test
@@ -84,7 +88,7 @@
       .background(Color.guide)
       .padding(.horizontal)
 
-      assertSnapshot(of: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout))
     }
   }
 
