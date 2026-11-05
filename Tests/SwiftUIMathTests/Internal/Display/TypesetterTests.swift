@@ -2914,6 +2914,54 @@ struct TypesetterTests {
     }
   }
 
+  // Greatest vertical distance between the text lines of a display.
+  private func lineSpan(_ display: Math.DisplayList) -> CGFloat {
+    let yPositions = display.children.compactMap { $0 as? Math.DisplayTextRun }.map(\.position.y)
+    return (yPositions.max() ?? 0) - (yPositions.min() ?? 0)
+  }
+
+  @Test(arguments: ["x^{2}", "r_{i}", "x_{1}^{2}", "E=mc^{2}", "a+b^{2}", "a^{2}b^{2}"])
+  func scriptedAtoms_StayOnOneLineWhenTheyFit(latex: String) throws {
+    let font = try makeFont()
+    let mathList = try #require(Math.Parser.build(fromString: latex))
+    let natural = try #require(
+      Math.Typesetter.createLineForMathList(mathList, font: font, style: .text, maxWidth: 0))
+    let constrained = try #require(
+      Math.Typesetter.createLineForMathList(
+        mathList, font: font, style: .text, maxWidth: natural.width + 0.01))
+
+    #expect(constrained.ascent == natural.ascent)
+    #expect(constrained.descent == natural.descent)
+    #expect(constrained.width == natural.width)
+  }
+
+  @Test
+  func scriptedAtoms_BreakBeforeTheirNucleus() throws {
+    let font = try makeFont()
+    let mathList = try #require(Math.Parser.build(fromString: "aaaa+x^{2}"))
+    let natural = try #require(
+      Math.Typesetter.createLineForMathList(mathList, font: font, style: .text, maxWidth: 0))
+
+    // Narrow enough to push the scripted atom over, wide enough for the rest.
+    let display = try #require(
+      Math.Typesetter.createLineForMathList(
+        mathList, font: font, style: .text, maxWidth: natural.width - 1))
+
+    let runs = display.children.compactMap { $0 as? Math.DisplayTextRun }
+    let nucleus = try #require(runs.last { !$0.text.isEmpty })
+    let superscript = try #require(
+      display.children.compactMap { $0 as? Math.DisplayList }.first {
+        $0.linePosition == .superscript
+      })
+
+    #expect(lineSpan(display) > font.font.size)
+    #expect(nucleus.text.unicodeScalars.count == 1)
+    #expect(nucleus.position.y == runs.first { $0.text == nucleus.text }?.position.y)
+    #expect(superscript.position.y > nucleus.position.y)
+    #expect(superscript.position.y - nucleus.position.y < font.font.size)
+    #expect(superscript.position.x >= nucleus.width)
+  }
+
   @Test
   func scriptedAtoms_NoBreakingWithoutConstraint() throws {
     let font = try makeFont()
